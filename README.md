@@ -5,8 +5,17 @@ The first pilot product is **groundnuts from India**.
 
 ## Current status
 
-Module 1 (country-level trade statistics from UN Comtrade) is **scaffolded only**.
-The API client is not connected yet; `src/main.py` just checks that the project is set up.
+Module 1 (country-level trade statistics from UN Comtrade) is working.
+
+```powershell
+python -m src.comtrade_client                 # years from product_profile.json
+python -m src.comtrade_client --years 2023 2024
+```
+
+For each year it collects (a) every country's groundnut imports from the World and
+(b) India's groundnut exports to each partner, for the HS codes in `product_profile.json`.
+Raw responses go to `data/raw/`, and the combined table to `data/processed/market_data.csv`.
+The most recent year is usually incomplete because countries report with a delay.
 
 ## Project layout
 
@@ -18,6 +27,7 @@ data/
   logs/                  # run logs (not committed)
 src/
   config.py              # loads .env and prepares data folders
+  comtrade_client.py     # UN Comtrade collector -> market_data.csv
   main.py                # startup check
 tests/
 ```
@@ -46,7 +56,7 @@ UN Comtrade API: not connected yet.
 
 ## Roadmap
 
-1. `src/comtrade_client.py` – fetch annual groundnut import statistics, save raw responses, write `data/processed/market_data.csv`
+1. ~~UN Comtrade market data~~ (done)
 2. Buyer-company collection (APEDA leads, shipment sources)
 3. Website enrichment, cleaning and deduplication
 4. AI classification and ranking
