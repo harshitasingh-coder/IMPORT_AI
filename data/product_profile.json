@@ -1,0 +1,32 @@
+{
+  "product_name": "Groundnuts",
+  "exporting_country": "India",
+  "exporting_country_iso3": "IND",
+  "broad_hs_code_for_initial_market_scan": "1202",
+  "hs_nomenclature": "HS 2022",
+  "product_forms": [
+    {
+      "form": "In shell",
+      "candidate_hs_code": "120241",
+      "description": "Groundnuts, not roasted or otherwise cooked, in shell",
+      "verification_status": "needs_verification"
+    },
+    {
+      "form": "Shelled (kernels)",
+      "candidate_hs_code": "120242",
+      "description": "Groundnuts, not roasted or otherwise cooked, shelled, whether or not broken",
+      "verification_status": "needs_verification"
+    }
+  ],
+  "excluded_forms": [
+    {
+      "form": "Roasted or otherwise prepared groundnuts",
+      "hs_code": "200811",
+      "reason": "Different product; outside the raw groundnut scope"
+    }
+  ],
+  "synonyms": ["groundnut", "groundnuts", "peanut", "peanuts", "arachis", "groundnut kernels", "bold", "java"],
+  "trade_flow_of_interest": "imports",
+  "years_to_collect": [2021, 2022, 2023, 2024, 2025],
+  "notes": "Candidate 6-digit HS codes must be confirmed against the importing country's tariff schedule before company-level collection."
+}
