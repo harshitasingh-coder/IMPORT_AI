@@ -25,8 +25,48 @@
       "reason": "Different product; outside the raw groundnut scope"
     }
   ],
-  "synonyms": ["groundnut", "groundnuts", "peanut", "peanuts", "arachis", "groundnut kernels", "bold", "java"],
+  "synonyms": [
+    "groundnut",
+    "groundnuts",
+    "peanut",
+    "peanuts",
+    "arachis",
+    "groundnut kernels",
+    "bold",
+    "java"
+  ],
   "trade_flow_of_interest": "imports",
-  "years_to_collect": [2021, 2022, 2023, 2024, 2025],
-  "notes": "Candidate 6-digit HS codes must be confirmed against the importing country's tariff schedule before company-level collection."
+  "years_to_collect": [
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "notes": "Candidate 6-digit HS codes must be confirmed against the importing country's tariff schedule before company-level collection.",
+  "target_markets": [
+    {
+      "country": "Indonesia",
+      "iso3": "IDN",
+      "comtrade_code": 360,
+      "reason": "Largest buyer of Indian groundnuts; imports ~$419M in 2024 and growing; India supplies ~68%.",
+      "market_type": "proven_india_market"
+    },
+    {
+      "country": "Viet Nam",
+      "iso3": "VNM",
+      "comtrade_code": 704,
+      "reason": "India supplies almost all of its imports (~96% in 2023). India's exports fell from $215M (2023) to $125M (2024); 2024 imports not yet reported.",
+      "market_type": "proven_india_market"
+    },
+    {
+      "country": "Netherlands",
+      "iso3": "NLD",
+      "comtrade_code": 528,
+      "reason": "Second-largest importer worldwide (~$624M in 2024) and the EU's trading hub; India's share is only ~1-2%. EU aflatoxin limits are strict.",
+      "market_type": "large_underserved_market"
+    }
+  ],
+  "target_markets_selected_on": "2026-10-18",
+  "target_markets_source": "data/processed/market_shortlist.csv (UN Comtrade 2021-2024)"
 }
