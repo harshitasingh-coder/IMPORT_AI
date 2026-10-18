@@ -29,11 +29,32 @@ Selected on 2026-10-18 from UN Comtrade data for 2021–2024 (`python -m src.mar
 
 The reasons are also stored in `data/product_profile.json` under `target_markets`.
 
+## Adding buyer leads
+
+APEDA buy leads require an exporter login and APEDA restricts commercial reuse,
+so leads are collected by hand and then ingested:
+
+1. Copy `data/templates/buyer_leads_template.csv` into `data/inbox/` (e.g. `apeda_2026-10-18.csv`).
+2. Fill one row per lead. `company_name_raw`, `country_raw` and `source_url` are required.
+   Copy text exactly as the source shows it.
+3. Check it, then add it:
+
+```powershell
+python -m src.buyer_discovery ingest data/inbox/apeda_2026-10-18.csv --source APEDA --source-type buyer_lead --collected-by Shubhi --dry-run
+python -m src.buyer_discovery ingest data/inbox/apeda_2026-10-18.csv --source APEDA --source-type buyer_lead --collected-by Shubhi
+python -m src.buyer_discovery summary
+```
+
+Rows outside the target markets or without a groundnut/peanut mention are kept but reported.
+Re-ingesting the same file adds nothing. The original file is copied to `data/raw/manual/`.
+
 ## Project layout
 
 ```
 data/
   product_profile.json   # product, exporter, product forms, candidate HS codes
+  templates/             # buyer_leads_template.csv
+  inbox/                 # your filled lead files (not committed)
   raw/                   # original API responses and downloads (not committed)
   processed/             # cleaned market data, e.g. market_data.csv (not committed)
   logs/                  # run logs (not committed)
@@ -43,6 +64,7 @@ src/
   market_shortlist.py    # ranks importing countries -> market_shortlist.csv
   schemas.py             # columns for the company-level buyer datasets
   init_buyer_dataset.py  # creates empty buyer dataset CSVs with headers
+  buyer_discovery.py     # ingests hand-collected leads -> raw_importer_records.csv
   main.py                # startup check
 tests/
 ```
