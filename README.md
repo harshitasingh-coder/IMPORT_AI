@@ -67,6 +67,20 @@ python -m src.web            # then open http://127.0.0.1:8000
 
 Enter a product profile (or use the saved pilot profile), click Run, and browse the ranked buyers, evidence and
 score breakdowns. It binds to localhost only, refuses cross-origin requests, and runs one pipeline at a time.
+### Putting the web app online
+
+The app has a login for online use. To accept outside connections you must set `AVYUKT_PASSWORD`
+(user name `avyukt`); without it the server refuses to listen on a public address.
+
+```powershell
+$env:AVYUKT_PASSWORD="a-long-random-password"; python -m src.web --host 0.0.0.0
+```
+
+Hosting platforms: a `Dockerfile` and a Render blueprint (`render.yaml`) are included. Set `AVYUKT_PASSWORD`,
+`UN_COMTRADE_API_KEY` and `BRAVE_SEARCH_API_KEY` as secrets in the platform dashboard (never commit them), keep
+`/data` on a persistent disk, and serve it over HTTPS (the platform does this). The platform's `PORT` variable is
+picked up automatically. The Dockerfile has not been built or tested yet (Docker is not available here).
+
 A static copy of the dashboard is also written to `data/exports/dashboard.html` by every run. Design, rules and limitations: `docs/ARCHITECTURE.md`.
 Optional keys in `.env`: `UN_COMTRADE_API_KEY`, `BRAVE_SEARCH_API_KEY`. Extra discovery pages can be listed in
 `data/inbox/discovery_seeds.csv` (raw_company_name, source_url, source_type, country, source_name).

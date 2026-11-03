@@ -2,14 +2,19 @@
 
     python -m src.web [--port 8000] [--data-dir PATH]
 
-Standard library only. Binds to 127.0.0.1; POST requests must come from the same origin
-(blocks other websites from triggering runs). One pipeline run at a time.
+Standard library only. By default binds to 127.0.0.1 with no login (local use).
+To accept outside connections (--host 0.0.0.0, or the PORT env var on a host platform) you MUST set
+AVYUKT_PASSWORD: every request then needs HTTP Basic auth (user: avyukt). Use HTTPS in front of it.
+POST requests must come from the same origin. One pipeline run at a time.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
+import hmac
 import json
+import os
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,9 +26,14 @@ from src.pipeline.common import Context, Paths, new_run_id, read_json, utcnow
 MAX_BODY = 20_000
 
 
+AUTH_USER = "avyukt"
+LOCAL_HOSTS = ("127.0.0.1", "localhost")
+
+
 class AppState:
-    def __init__(self, paths: Paths):
+    def __init__(self, paths: Paths, password: str = ""):
         self.paths = paths
+        self.password = password
         self.lock = threading.Lock()
         self.status = {"state": "idle", "run_id": "", "message": "", "stages": [], "summary": None}
 
@@ -100,8 +110,41 @@ def make_handler(state: AppState):
             pass
 
         def _host_ok(self):
+            if state.password:  # public mode: the password protects it; any hostname is fine
+                return True
             host = (self.headers.get("Host") or "").split(":")[0]
-            return host in ("127.0.0.1", "localhost")  # blocks DNS-rebinding style access
+            return host in LOCAL_HOSTS  # local mode: blocks DNS-rebinding style access
+
+        def _authorized(self):
+            if not state.password:
+                return True
+            hdr = self.headers.get("Authorization") or ""
+            if hdr.startswith("Basic "):
+                try:
+                    user, _, pw = base64.b64decode(hdr[6:]).decode("utf-8").partition(":")
+                except Exception:
+                    return False
+                ok_user = hmac.compare_digest(user.encode(), AUTH_USER.encode())
+                ok_pw = hmac.compare_digest(pw.encode(), state.password.encode())
+                return ok_user and ok_pw
+            return False
+
+        def _deny_auth(self):
+            body = b'{"error": "authentication required"}'
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="AVYUKT", charset="UTF-8"')
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _same_origin(self):
+            origin = self.headers.get("Origin")
+            if not origin:
+                return True
+            if state.password:
+                return origin.split("://", 1)[-1] == (self.headers.get("Host") or "")
+            return origin.split("://", 1)[-1].split(":")[0] in LOCAL_HOSTS
 
         def _send(self, code, body, ctype="application/json"):
             data = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -127,9 +170,13 @@ def make_handler(state: AppState):
             return p
 
         def do_GET(self):
+            path = self.path.split("?")[0]
+            if path == "/healthz":  # for hosting platforms; reveals nothing
+                return self._json(200, {"ok": True})
             if not self._host_ok():
                 return self._json(403, {"error": "forbidden host"})
-            path = self.path.split("?")[0]
+            if not self._authorized():
+                return self._deny_auth()
             if path == "/":
                 html = page.read_text(encoding="utf-8").replace("/*__DATA__*/null", "null")
                 return self._send(200, html, "text/html")
@@ -144,8 +191,9 @@ def make_handler(state: AppState):
         def do_POST(self):
             if not self._host_ok():
                 return self._json(403, {"error": "forbidden host"})
-            origin = self.headers.get("Origin")
-            if origin and origin.split("://")[-1].split(":")[0] not in ("127.0.0.1", "localhost"):
+            if not self._authorized():
+                return self._deny_auth()
+            if not self._same_origin():
                 return self._json(403, {"error": "cross-origin request refused"})
             if self.path != "/api/run":
                 return self._json(404, {"error": "not found"})
@@ -164,18 +212,25 @@ def make_handler(state: AppState):
     return Handler
 
 
-def make_server(paths: Paths, port=8000):
+def make_server(paths: Paths, port=8000, host="127.0.0.1", password=""):
+    if host not in LOCAL_HOSTS and not password:
+        raise SystemExit("Refusing to listen on a public address without a password. "
+                         "Set AVYUKT_PASSWORD (a long random value) first.")
     paths.ensure()
-    return ThreadingHTTPServer(("127.0.0.1", port), make_handler(AppState(paths)))
+    return ThreadingHTTPServer((host, port), make_handler(AppState(paths, password)))
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m src.web")
-    ap.add_argument("--port", type=int, default=8000)
-    ap.add_argument("--data-dir")
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    ap.add_argument("--host", default=None, help="default 127.0.0.1; 0.0.0.0 when the PORT env var is set")
+    ap.add_argument("--data-dir", default=os.environ.get("AVYUKT_DATA_DIR"))
     args = ap.parse_args(argv)
-    srv = make_server(Paths(args.data_dir), args.port)
-    print(f"AVYUKT running at http://127.0.0.1:{srv.server_port}  (Ctrl+C to stop)")
+    host = args.host or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
+    password = os.environ.get("AVYUKT_PASSWORD", "")
+    srv = make_server(Paths(args.data_dir), args.port, host, password)
+    mode = "password-protected (user: avyukt)" if password else "local, no login"
+    print(f"AVYUKT running on {host}:{srv.server_port} - {mode}  (Ctrl+C to stop)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

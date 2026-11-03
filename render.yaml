@@ -1,0 +1,18 @@
+# Render.com blueprint: one web service with a persistent disk. Set the secrets in the Render dashboard.
+services:
+  - type: web
+    name: avyukt
+    runtime: docker
+    plan: starter            # a persistent disk needs a paid plan
+    healthCheckPath: /healthz
+    disk:
+      name: avyukt-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: AVYUKT_PASSWORD
+        sync: false          # you type this in the dashboard; never commit it
+      - key: UN_COMTRADE_API_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false

@@ -92,5 +92,51 @@ class WebApp(PipelineTestCase):
         self.assertEqual(self.call("/nope")[0], 404)
 
 
+class WebAuth(PipelineTestCase):
+    def start(self, password):
+        srv = server.make_server(self.paths, 0, "127.0.0.1", password)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return f"http://127.0.0.1:{srv.server_port}"
+
+    def get(self, url, auth=None, headers=None, data=None):
+        import base64
+        h = dict(headers or {})
+        if auth:
+            h["Authorization"] = "Basic " + base64.b64encode(auth.encode()).decode()
+        req = urllib.request.Request(url, headers=h, data=data, method="POST" if data is not None else "GET")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_password_required_when_set(self):
+        base = self.start("s3cret-long-value")
+        self.assertEqual(self.get(base + "/api/data"), 401)
+        self.assertEqual(self.get(base + "/"), 401)
+        self.assertEqual(self.get(base + "/api/data", auth="avyukt:wrong"), 401)
+        self.assertEqual(self.get(base + "/api/data", auth="other:s3cret-long-value"), 401)
+        self.assertEqual(self.get(base + "/api/data", auth="avyukt:s3cret-long-value"), 200)
+        self.assertEqual(self.get(base + "/healthz"), 200)  # health check reveals nothing
+
+    def test_run_requires_login_and_same_origin(self):
+        base = self.start("pw-123456789")
+        body = b"{}"
+        j = {"Content-Type": "application/json"}
+        self.assertEqual(self.get(base + "/api/run", headers=j, data=body), 401)
+        self.assertEqual(self.get(base + "/api/run", auth="avyukt:pw-123456789",
+                                  headers={**j, "Origin": "https://evil.example"}, data=body), 403)
+
+    def test_public_bind_without_password_is_refused(self):
+        with self.assertRaises(SystemExit):
+            server.make_server(self.paths, 0, "0.0.0.0", "")
+
+    def test_no_password_means_local_mode_still_open(self):
+        base = self.start("")
+        self.assertEqual(self.get(base + "/api/data"), 200)
+
+
 if __name__ == "__main__":
     unittest.main()
