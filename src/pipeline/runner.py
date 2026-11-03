@@ -89,6 +89,21 @@ def build_summary(ctx: Context, results, started_at):
     }
 
 
+def execute(ctx: Context, selected=None):
+    """Run stages, refresh the dashboard with run info, write run summaries. -> (results, summary)."""
+    started = ctx.now
+    results = run_stages(ctx, selected)
+    summary = build_summary(ctx, results, started)
+    if any(r.stage == "export" for r in results):
+        ctx.options["run_info"] = {"run_id": ctx.run_id, "warnings": summary["warnings"],
+                                   "stages_failed": summary["stages_failed"]}
+        export.run(ctx)  # export ran before the summary existed; redo so the dashboard embeds run info
+    write_json(ctx.paths.run_summary, summary, ctx.paths, started)
+    if ctx.paths.exports.exists():
+        write_json(ctx.paths.exports / "pipeline_run_summary.json", summary, ctx.paths, started)
+    return results, summary
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m src.pipeline", description="AVYUKT buyer-discovery pipeline")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -122,16 +137,7 @@ def main(argv=None):
         selected = {"extraction" if args.stage == "enrichment" else args.stage}
     elif args.from_stage:
         selected = set(STAGE_NAMES[STAGE_NAMES.index(args.from_stage):])
-    results = run_stages(ctx, selected)
-    summary = build_summary(ctx, results, now)
-    # the export stage ran before the summary existed; refresh dashboard so it embeds run info
-    if any(r.stage == "export" for r in results):
-        ctx.options["run_info"] = {"run_id": ctx.run_id, "warnings": summary["warnings"],
-                                   "stages_failed": summary["stages_failed"]}
-        export.run(ctx)
-    write_json(ctx.paths.run_summary, summary, ctx.paths, now)
-    if ctx.paths.exports.exists():
-        write_json(ctx.paths.exports / "pipeline_run_summary.json", summary, ctx.paths, now)
+    results, summary = execute(ctx, selected)
     print(f"Run {ctx.run_id}")
     for r in results:
         print(f"  {r.stage:<14}{r.status:<26}{r.counts}")
