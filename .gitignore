@@ -7,3 +7,4 @@ data/processed/*
 data/logs/*
 data/inbox/*
 !.gitkeep
+data/exports/*

@@ -15,6 +15,8 @@ PROFILE_PATH = DATA_DIR / "product_profile.json"
 load_dotenv(ROOT / ".env")
 
 UN_COMTRADE_API_KEY = os.getenv("UN_COMTRADE_API_KEY", "").strip()
+# Optional: official Brave Search API key for automated buyer discovery.
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
 
 
 def ensure_data_dirs():

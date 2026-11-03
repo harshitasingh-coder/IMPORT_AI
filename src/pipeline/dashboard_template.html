@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AVYUKT buyer shortlist</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2433;--mute:#667085;--line:#e3e6eb;--acc:#0b6b4f}
+@media(prefers-color-scheme:dark){:root{--bg:#10141b;--card:#181e28;--ink:#e8ecf3;--mute:#98a2b3;--line:#2a3342;--acc:#3ac19a}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:16px 24px;border-bottom:1px solid var(--line);background:var(--card)}h1{margin:0;font-size:20px}h2{font-size:15px;margin:0 0 8px}
+main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;padding:16px 24px}@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}
+.kpis{display:flex;flex-wrap:wrap;gap:8px}.kpi{border:1px solid var(--line);border-radius:6px;padding:6px 10px;min-width:110px}.kpi b{display:block;font-size:20px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}tr.row{cursor:pointer}tr.row:hover,tr.sel{background:rgba(11,107,79,.1)}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;border:1px solid var(--line);font-size:12px}.mute{color:var(--mute)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.warn{border-left:3px solid #d98e04;padding:4px 10px;margin:6px 0;background:rgba(217,142,4,.08)}
+blockquote{margin:4px 0;padding:4px 10px;border-left:3px solid var(--line);color:var(--mute)}
+a{color:var(--acc)}input,select{padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+</style></head><body>
+<header><h1>AVYUKT buyer shortlist</h1><div class="mute" id="sub"></div></header>
+<main><div id="left"></div><div id="right"><div class="card mute">Select a company to see why it was classified and scored.</div></div></main>
+<script type="application/json" id="data">/*__DATA__*/null</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const h=(t,a,...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a||{})){if(x==='class')e.className=v;else e.setAttribute(x,v)}for(const c of k.flat())if(c!=null)e.append(c.nodeType?c:document.createTextNode(String(c)));return e};
+const link=u=>/^https?:\/\//i.test(u||'')?h('a',{href:u,target:'_blank',rel:'noopener noreferrer'},u):h('span',{class:'mute'},u||'—');
+const card=(title,...k)=>h('div',{class:'card'},h('h2',{},title),...k);
+const P=D.product_profile||{};
+document.getElementById('sub').textContent=`Generated ${D.generated_at} · run ${(D.run||{}).run_id||'n/a'} · lead-prioritization score, not a purchase probability`;
+const left=document.getElementById('left'),right=document.getElementById('right');
+left.append(card('Product profile',h('div',{},`${P.product_name||'?'} — origin ${P.origin_country||'?'} · HS heading ${P.broad_hs_heading||'?'}`),
+ h('ul',{},(P.product_forms||[]).map(f=>h('li',{},`${f.form}: HS ${f.hs_code} `,h('span',{class:'pill'},f.verification_status)))),
+ h('div',{class:'mute'},'Excluded: '+((P.excluded_forms||[]).map(f=>`${f.form} (HS ${f.hs_code})`).join(', ')||'none'))));
+left.append(card('Target markets',D.market_available?h('table',{},h('tr',{},['Market','Latest import (USD)','Trend','India share','Data retrieved'].map(x=>h('th',{},x))),
+ D.markets.map(m=>h('tr',{},h('td',{},m.country),h('td',{},Number(m.latest_import_value_usd).toLocaleString()+' ('+m.latest_year+')'),h('td',{},m.trend),h('td',{},m.india_share_latest_pct?m.india_share_latest_pct+'%':'unknown'),h('td',{},(m.retrieved_at||'').slice(0,10)+' ('+m.freshness_status+')')))):
+ h('div',{class:'warn'},'Trade data unavailable — '+(P.target_markets||[]).map(m=>m.country).join(', ')+' are the profile\'s target markets; no statistics shown.'),
+ !D.market_available?'':h('div',{class:'mute'},'Country-level statistics only; they do not identify individual importers.')));
+const C=D.counts;left.append(card('Pipeline results',h('div',{class:'kpis'},[['Discovered',C.discovered],['Potential buyers',C.potential_buyer],['Relevant businesses',C.relevant_business],['Weak leads',C.weak_lead],['Undetermined',C.undetermined],['Excluded',C.excluded]].map(([a,b])=>h('div',{class:'kpi'},h('b',{},b),a)))));
+const fs=h('select',{},['all','potential_buyer','relevant_business','weak_lead','undetermined','excluded'].map(x=>h('option',{value:x},x)));
+const q=h('input',{placeholder:'search name/country'});const tb=h('table',{});
+function draw(){tb.replaceChildren(h('tr',{},['#','Company','Country','Type','Class','Score','Band'].map(x=>h('th',{},x))));
+ D.companies.filter(c=>(fs.value==='all'||c.ranking.final_classification===fs.value)&&(c.ranking.company_name+c.ranking.country_iso3).toLowerCase().includes(q.value.toLowerCase())).forEach(c=>{const r=c.ranking;
+ const tr=h('tr',{class:'row'},h('td',{},r.rank||'—'),h('td',{},r.company_name),h('td',{},r.country_iso3||'?'),h('td',{},r.business_type||'?'),h('td',{},h('span',{class:'pill'},r.final_classification)),h('td',{},r.total_score),h('td',{},r.priority_band));
+ tr.onclick=()=>{document.querySelectorAll('tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel');detail(c)};tb.append(tr)})}
+fs.onchange=q.oninput=draw;left.append(card('Ranked companies',h('div',{},fs,' ',q),tb));draw();
+left.append(card('Unresolved issues (all companies)',D.global_issues.map(x=>h('div',{class:'warn'},x)),(D.run.warnings||[]).slice(0,20).map(x=>h('div',{class:'warn'},x))));
+function detail(c){const r=c.ranking,q=c.qualification,p=c.profile;right.replaceChildren();
+ right.append(card(r.company_name,h('div',{},`${r.final_classification} · score ${r.total_score}/100 · ${r.priority_band}`),
+  h('div',{class:'mute'},`${p.business_type||'type unknown'} · ${r.country_iso3||'country unknown'} · dedup: ${p.dedup_status||'?'}`),
+  h('p',{},p.business_description||'No business description extracted.'),h('div',{},'Website: ',link(r.website))));
+ right.append(card('Why this classification',h('p',{},r.classification_reason),h('div',{class:'mute'},`Rule ${q.classification_rule||''} · ${q.recommended_by||''} · status ${q.qualification_status||''}`+(q.override_applied==='yes'?' · MANUAL OVERRIDE: '+q.override_note:'')),
+  h('table',{},[['Product relevance',q.product_relevance],['Buyer-role evidence',q.buyer_role_evidence],['Historical importing',q.historical_import_activity],['India-origin evidence',q.india_origin_evidence],['Current buying intent',q.current_buying_intent],['Legal identity',q.legal_identity_status],['Contact availability',q.contact_availability]].map(([a,b])=>h('tr',{},h('td',{},a),h('td',{},b))))));
+ const comps=[['product_relevance',25],['buyer_role',25],['evidence_quality',20],['market_fit',10],['india_origin',10],['contactability',10]];
+ right.append(card('Score breakdown',comps.map(([k,m])=>h('div',{},h('div',{},`${k.replace('_',' ')}: ${r['score_'+k]}/${m}`),h('div',{class:'bar'},h('i',{style:`width:${100*r['score_'+k]/m}%`})),h('div',{class:'mute'},r['why_'+k])))));
+ right.append(card('Public contact',h('div',{},'Email: '+(r.public_email||'none extracted')),h('div',{},'Phone: '+(r.public_phone||'none extracted')),h('div',{},'Address: '+(r.public_address||'none extracted')),h('div',{},'Contact page: ',link(p.contact_page))));
+ right.append(card('Supporting evidence',c.evidence.length?c.evidence.map(e=>h('div',{},h('blockquote',{},'“'+e.exact_text+'”'),h('div',{class:'mute'},`tier ${e.source_authority_tier} ${e.source_authority_label} · ${e.source_type} · retrieved ${(e.retrieved_at||'').slice(0,10)}${e.publication_date?' · published '+e.publication_date:''}`),link(e.source_url))):[h('div',{class:'mute'},'No supporting evidence.')]));
+ right.append(card('Claims',h('table',{},h('tr',{},['Claim','Status','Confidence','Tier','Limitations'].map(x=>h('th',{},x))),c.claims.map(k=>h('tr',{},h('td',{},k.claim_type),h('td',{},k.claim_status),h('td',{},k.confidence_level||'—'),h('td',{},k.source_authority_tier||'—'),h('td',{class:'mute'},k.limitations))))));
+ right.append(card('Data freshness & unresolved issues',h('div',{},`Evidence retrieved ${(r.oldest_evidence_retrieved_at||'n/a').slice(0,10)} → ${(r.newest_evidence_retrieved_at||'n/a').slice(0,10)} (${r.evidence_age_days===''?'age unknown':r.evidence_age_days+' days old'})`),
+  (r.unresolved_issues||'').split(' | ').filter(Boolean).map(x=>h('div',{class:'warn'},x))))}
+</script></body></html>
