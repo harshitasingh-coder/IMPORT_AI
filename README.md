@@ -59,7 +59,15 @@ python -m src.pipeline audit                    # integrity checks on the output
 python -m unittest discover -s tests -t .       # tests
 ```
 
-Open `data/exports/dashboard.html` in a browser. Design, rules and limitations: `docs/ARCHITECTURE.md`.
+### Web app (frontend)
+
+```powershell
+python -m src.web            # then open http://127.0.0.1:8000
+```
+
+Enter a product profile (or use the saved pilot profile), click Run, and browse the ranked buyers, evidence and
+score breakdowns. It binds to localhost only, refuses cross-origin requests, and runs one pipeline at a time.
+A static copy of the dashboard is also written to `data/exports/dashboard.html` by every run. Design, rules and limitations: `docs/ARCHITECTURE.md`.
 Optional keys in `.env`: `UN_COMTRADE_API_KEY`, `BRAVE_SEARCH_API_KEY`. Extra discovery pages can be listed in
 `data/inbox/discovery_seeds.csv` (raw_company_name, source_url, source_type, country, source_name).
 
@@ -81,6 +89,8 @@ src/
   init_buyer_dataset.py  # creates empty buyer dataset CSVs with headers
   buyer_discovery.py     # ingests hand-collected leads -> raw_importer_records.csv
   main.py                # startup check
+  pipeline/              # the 9-stage pipeline (see docs/ARCHITECTURE.md)
+  web/                   # local web app: python -m src.web
 tests/
 ```
 
