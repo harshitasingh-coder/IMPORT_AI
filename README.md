@@ -48,6 +48,21 @@ python -m src.buyer_discovery summary
 Rows outside the target markets or without a groundnut/peanut mention are kept but reported.
 Re-ingesting the same file adds nothing. The original file is copied to `data/raw/manual/`.
 
+## End-to-end pipeline
+
+```powershell
+python -m src.pipeline run                      # all stages
+python -m src.pipeline run --stage discovery    # one stage (profile|market|discovery|extraction|resolution|claims|qualification|scoring|export)
+python -m src.pipeline run --from-stage claims  # that stage and everything after
+python -m src.pipeline run --offline            # no network: cached/ingested data only
+python -m src.pipeline audit                    # integrity checks on the outputs
+python -m unittest discover -s tests -t .       # tests
+```
+
+Open `data/exports/dashboard.html` in a browser. Design, rules and limitations: `docs/ARCHITECTURE.md`.
+Optional keys in `.env`: `UN_COMTRADE_API_KEY`, `BRAVE_SEARCH_API_KEY`. Extra discovery pages can be listed in
+`data/inbox/discovery_seeds.csv` (raw_company_name, source_url, source_type, country, source_name).
+
 ## Project layout
 
 ```
