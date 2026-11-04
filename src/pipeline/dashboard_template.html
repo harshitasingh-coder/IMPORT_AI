@@ -28,41 +28,54 @@ const left=document.getElementById('left'),right=document.getElementById('right'
 let filterVal='all',queryVal='',selectedId=null;
 
 function buildRunPanel(){
-  const f=(id,label,ph,val)=>h('div',{},h('label',{for:id},label),h('input',{id,placeholder:ph||'',value:val||'',style:'width:100%'}));
+  const dirty={v:false};
+  const f=(id,label,ph)=>{const i=h('input',{id,placeholder:ph||'',style:'width:100%'});i.oninput=()=>{dirty.v=true};return h('div',{},h('label',{for:id},label),i)};
   const status=h('div',{id:'runstatus',class:'mute',style:'margin-top:8px'});
-  const off=h('input',{type:'checkbox',id:'f_off'});
-  const go=h('button',{id:'btn_run'},'Run with this profile'),pilot=h('button',{class:'alt',id:'btn_pilot'},'Run saved pilot profile');
-  const P=D.product_profile||{};
-  const defCountries=(P.target_markets||[]).map(m=>m.country).join(', ');
+  const step=(n,title,...k)=>h('div',{class:'card'},h('h2',{},`Step ${n}: ${title}`),...k);
+  const s1=step(1,'What are you selling?',h('div',{class:'form'},f('f_product','Product','Groundnuts'),f('f_form','Form','Shelled kernels'),f('f_origin','Made in','India'),
+    f('f_hs','HS code(s), comma separated','120242'),f('f_countries','Countries to sell to (comma separated)','Indonesia, Viet Nam, Netherlands')),
+    h('div',{class:'mute',style:'margin-top:6px'},'Already filled with the groundnut pilot. Leave it as it is to use the saved pilot profile.'));
   const ta=h('textarea',{id:'f_seeds',rows:'5',style:'width:100%;font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)',placeholder:'One company per line:\nPT Example Foods | https://www.example.co.id | Indonesia\nExample Trading BV | https://example.nl | Netherlands'});
   const seedmsg=h('div',{id:'seedmsg',class:'mute',style:'margin-top:6px'});
-  const addb=h('button',{class:'alt',id:'btn_seeds'},'Add companies');
+  const addb=h('button',{class:'alt',id:'btn_seeds'},'Add these companies');
   addb.onclick=async()=>{addb.disabled=true;seedmsg.className='mute';seedmsg.textContent='Adding…';
     try{const r=await fetch('/api/seeds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:ta.value})});const j=await r.json();
       if(!r.ok){seedmsg.className='err';seedmsg.textContent=j.error||'Failed'}
-      else{seedmsg.replaceChildren(h('div',{},`Added ${j.added}, skipped ${j.duplicates_skipped} already listed.`+(j.added?' Now click Run.':'')),...j.rejected.map(x=>h('div',{class:'err'},`“${x.line}” — ${x.reason}`)));if(j.added)ta.value=''}}
+      else{seedmsg.replaceChildren(h('div',{},`Added ${j.added}, skipped ${j.duplicates_skipped} already listed.`+(j.added?' Now go to Step 3.':'')),...j.rejected.map(x=>h('div',{class:'err'},`“${x.line}” — ${x.reason}`)));if(j.added){ta.value='';counts()}}}
     catch(e){seedmsg.className='err';seedmsg.textContent='Could not reach the server: '+e}addb.disabled=false};
-  const seedcard=card('Add companies to check (no search key needed)',h('div',{class:'mute',style:'margin-bottom:6px'},'Find importers yourself (Google, directories, trade fairs), then paste their company name and website here. The pipeline reads only their public pages and builds the evidence. Pages are never treated as proof of buying on their own.'),ta,h('div',{style:'margin-top:8px'},addb),seedmsg);
-  runpanel.replaceChildren(card('Product profile & run',
-    h('div',{class:'form'},f('f_product','Product','e.g. Groundnuts',P.product_name),f('f_form','Form','e.g. Shelled kernels'),f('f_origin','Origin','India',P.origin_country||'India'),
-      f('f_hs','HS code (optional)','120242'),f('f_countries','Target countries (comma separated)','Indonesia, Viet Nam',defCountries)),
-    h('div',{style:'margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap'},go,pilot,h('label',{style:'display:inline'},off,' Offline (no network; cached/ingested data only)')),
-    h('div',{class:'mute',style:'margin-top:6px'},'HS codes are never auto-verified. Running fetches only public pages that allow it (robots.txt respected).'),status),seedcard);
-  const run=async body=>{go.disabled=pilot.disabled=true;status.className='mute';status.textContent='Starting…';
-    try{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,offline:off.checked})});
-      const j=await r.json();if(!r.ok){status.className='err';status.textContent=j.error||'Request failed';go.disabled=pilot.disabled=false;return}
-      poll(status,go,pilot)}catch(e){status.className='err';status.textContent='Could not reach the server: '+e;go.disabled=pilot.disabled=false}};
-  go.onclick=()=>run({product:document.getElementById('f_product').value,form:document.getElementById('f_form').value,origin:document.getElementById('f_origin').value,hs:document.getElementById('f_hs').value,countries:document.getElementById('f_countries').value});
-  pilot.onclick=()=>run({});
+  const have=h('div',{class:'mute',style:'margin-top:6px',id:'seedcount'});
+  async function counts(){try{const j=await (await fetch('/api/seeds')).json();have.textContent=`${j.count} compan${j.count===1?'y':'ies'} saved so far.`}catch(e){}}
+  const s2=step(2,'Add companies to check',h('div',{class:'mute',style:'margin-bottom:6px'},'The app cannot invent companies. Find importers yourself (Google, directories, trade fairs) and paste their name and website here. It then reads their public pages and builds the evidence. No search key needed.'),ta,h('div',{style:'margin-top:8px'},addb),seedmsg,have);
+  const off=h('input',{type:'checkbox',id:'f_off'});
+  const go=h('button',{id:'btn_run',style:'font-size:16px;padding:10px 20px'},'Find buyers');
+  const s3=step(3,'Run',h('div',{style:'display:flex;gap:12px;align-items:center;flex-wrap:wrap'},go,h('label',{style:'display:inline'},off,' Offline (do not visit websites)')),
+    h('div',{class:'mute',style:'margin-top:6px'},'Takes about a minute per few websites. Only public pages that allow it are visited.'),status);
+  runpanel.replaceChildren(s1,s2,s3);counts();
+  fetch('/api/profile').then(r=>r.json()).then(p=>{ // prefill from the saved pilot profile
+    const P0=(p&&p.product_name)?p:null;if(!P0||dirty.v)return;
+    const forms=P0.product_forms||[];
+    document.getElementById('f_product').value=P0.product_name||'';
+    document.getElementById('f_form').value=forms.map(x=>x.form).filter(Boolean).join(' / ');
+    document.getElementById('f_origin').value=P0.exporting_country||'India';
+    document.getElementById('f_hs').value=forms.map(x=>x.candidate_hs_code).filter(Boolean).join(', ');
+    document.getElementById('f_countries').value=(P0.target_markets||[]).map(m=>m.country).join(', ');dirty.v=false}).catch(()=>{});
+  go.onclick=async()=>{go.disabled=true;status.className='mute';status.textContent='Starting…';
+    const body=dirty.v?{product:document.getElementById('f_product').value,form:document.getElementById('f_form').value,origin:document.getElementById('f_origin').value,hs:document.getElementById('f_hs').value,countries:document.getElementById('f_countries').value}:{};
+    body.offline=off.checked;
+    try{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json();if(!r.ok){status.className='err';status.textContent=j.error||'Request failed';go.disabled=false;return}
+      poll(status,go)}catch(e){status.className='err';status.textContent='Could not reach the server: '+e;go.disabled=false}};
 }
-async function poll(status,go,pilot){
+async function poll(status,go){
   for(;;){const s=await (await fetch('/api/status')).json();
-    status.textContent=s.state==='running'?'Running… (this can take a few minutes when websites are fetched)':'';
-    if(s.state!=='running'){go.disabled=pilot.disabled=false;status.replaceChildren();
-      if(s.state==='error'){status.className='err';status.textContent=s.message}
-      else{status.className='';(s.stages||[]).forEach(x=>status.append(h('div',{class:(x.status==='failed'?'err':'mute')},`${x.stage}: ${x.status}`+(x.errors&&x.errors.length?' — '+x.errors.join('; '):''))))}
-      await loadData();return}
-    await new Promise(r=>setTimeout(r,1000))}
+    if(s.state==='running'){status.textContent='Running… please wait (this can take a few minutes when websites are visited)';await new Promise(r=>setTimeout(r,1500));continue}
+    go.disabled=false;status.replaceChildren();
+    if(s.state==='error'){status.className='err';status.textContent=s.message}
+    else{const m=s.summary||{},c=m.classification_counts||{};status.className='';
+      status.append(h('div',{},`Done. ${m.company_count||0} companies checked: ${c.potential_buyer||0} potential buyers, ${c.relevant_business||0} relevant businesses, ${c.weak_lead||0} weak leads, ${c.undetermined||0} undetermined.`));
+      (s.stages||[]).filter(x=>x.status==='failed').forEach(x=>status.append(h('div',{class:'err'},`${x.stage} failed — ${(x.errors||[]).join('; ')}`)));
+      if(!(m.company_count))status.append(h('div',{class:'warn'},'No companies yet: add some in Step 2, then run again.'))}
+    await loadData();return}
 }
 async function loadData(){D=await (await fetch('/api/data')).json();render()}
 
@@ -81,7 +94,7 @@ function render(){
  const q=h('input',{placeholder:'search name/country',value:queryVal});const tb=h('table',{});
  function draw(){filterVal=fs.value;queryVal=q.value;tb.replaceChildren(h('tr',{},['#','Company','Country','Type','Class','Score','Band'].map(x=>h('th',{},x))));
   const rows=D.companies.filter(c=>(fs.value==='all'||c.ranking.final_classification===fs.value)&&(c.ranking.company_name+c.ranking.country_iso3).toLowerCase().includes(q.value.toLowerCase()));
-  if(!rows.length)tb.append(h('tr',{},h('td',{colspan:7,class:'mute'},D.companies.length?'No companies match this filter.':'No companies yet. Run the pipeline (needs leads, seed pages or a search API key).')));
+  if(!rows.length)tb.append(h('tr',{},h('td',{colspan:7,class:'mute'},D.companies.length?'No companies match this filter.':'No companies yet. Add companies in Step 2, then click Find buyers.')));
   rows.forEach(c=>{const r=c.ranking;const tr=h('tr',{class:'row'+(r.company_id===selectedId?' sel':'')},h('td',{},r.rank||'—'),h('td',{},r.company_name),h('td',{},r.country_iso3||'?'),h('td',{},r.business_type||'?'),h('td',{},h('span',{class:'pill'},r.final_classification)),h('td',{},r.total_score),h('td',{},r.priority_band));
    tr.onclick=()=>{selectedId=r.company_id;document.querySelectorAll('tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel');detail(c)};tb.append(tr);if(r.company_id===selectedId)detail(c)})}
  fs.onchange=q.oninput=draw;left.append(card('Ranked companies',h('div',{},fs,' ',q),tb));draw();

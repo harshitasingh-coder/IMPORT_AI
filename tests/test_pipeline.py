@@ -897,3 +897,21 @@ class Regression(ClaimsBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigKeys(unittest.TestCase):
+    def test_placeholder_keys_count_as_unset(self):
+        import importlib, os
+        from src import config
+        old = {k: os.environ.get(k) for k in ("BRAVE_SEARCH_API_KEY", "UN_COMTRADE_API_KEY")}
+        try:
+            os.environ["BRAVE_SEARCH_API_KEY"], os.environ["UN_COMTRADE_API_KEY"] = "none", " None "
+            importlib.reload(config)
+            self.assertEqual((config.BRAVE_SEARCH_API_KEY, config.UN_COMTRADE_API_KEY, config.has_comtrade_key()), ("", "", False))
+            os.environ["BRAVE_SEARCH_API_KEY"] = "real-key-123"
+            importlib.reload(config)
+            self.assertEqual(config.BRAVE_SEARCH_API_KEY, "real-key-123")
+        finally:
+            for k, v in old.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+            importlib.reload(config)
