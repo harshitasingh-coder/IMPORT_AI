@@ -34,11 +34,20 @@ function buildRunPanel(){
   const go=h('button',{id:'btn_run'},'Run with this profile'),pilot=h('button',{class:'alt',id:'btn_pilot'},'Run saved pilot profile');
   const P=D.product_profile||{};
   const defCountries=(P.target_markets||[]).map(m=>m.country).join(', ');
+  const ta=h('textarea',{id:'f_seeds',rows:'5',style:'width:100%;font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)',placeholder:'One company per line:\nPT Example Foods | https://www.example.co.id | Indonesia\nExample Trading BV | https://example.nl | Netherlands'});
+  const seedmsg=h('div',{id:'seedmsg',class:'mute',style:'margin-top:6px'});
+  const addb=h('button',{class:'alt',id:'btn_seeds'},'Add companies');
+  addb.onclick=async()=>{addb.disabled=true;seedmsg.className='mute';seedmsg.textContent='Adding…';
+    try{const r=await fetch('/api/seeds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:ta.value})});const j=await r.json();
+      if(!r.ok){seedmsg.className='err';seedmsg.textContent=j.error||'Failed'}
+      else{seedmsg.replaceChildren(h('div',{},`Added ${j.added}, skipped ${j.duplicates_skipped} already listed.`+(j.added?' Now click Run.':'')),...j.rejected.map(x=>h('div',{class:'err'},`“${x.line}” — ${x.reason}`)));if(j.added)ta.value=''}}
+    catch(e){seedmsg.className='err';seedmsg.textContent='Could not reach the server: '+e}addb.disabled=false};
+  const seedcard=card('Add companies to check (no search key needed)',h('div',{class:'mute',style:'margin-bottom:6px'},'Find importers yourself (Google, directories, trade fairs), then paste their company name and website here. The pipeline reads only their public pages and builds the evidence. Pages are never treated as proof of buying on their own.'),ta,h('div',{style:'margin-top:8px'},addb),seedmsg);
   runpanel.replaceChildren(card('Product profile & run',
     h('div',{class:'form'},f('f_product','Product','e.g. Groundnuts',P.product_name),f('f_form','Form','e.g. Shelled kernels'),f('f_origin','Origin','India',P.origin_country||'India'),
       f('f_hs','HS code (optional)','120242'),f('f_countries','Target countries (comma separated)','Indonesia, Viet Nam',defCountries)),
     h('div',{style:'margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap'},go,pilot,h('label',{style:'display:inline'},off,' Offline (no network; cached/ingested data only)')),
-    h('div',{class:'mute',style:'margin-top:6px'},'HS codes are never auto-verified. Running fetches only public pages that allow it (robots.txt respected).'),status));
+    h('div',{class:'mute',style:'margin-top:6px'},'HS codes are never auto-verified. Running fetches only public pages that allow it (robots.txt respected).'),status),seedcard);
   const run=async body=>{go.disabled=pilot.disabled=true;status.className='mute';status.textContent='Starting…';
     try{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,offline:off.checked})});
       const j=await r.json();if(!r.ok){status.className='err';status.textContent=j.error||'Request failed';go.disabled=pilot.disabled=false;return}
