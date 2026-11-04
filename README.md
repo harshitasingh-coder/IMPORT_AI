@@ -67,6 +67,10 @@ python -m src.web            # then open http://127.0.0.1:8000
 
 Enter a product profile (or use the saved pilot profile), click Run, and browse the ranked buyers, evidence and
 score breakdowns. It binds to localhost only, refuses cross-origin requests, and runs one pipeline at a time.
+**No search API key?** Use the "Add companies to check" box in the web app: paste `Company | https://website | Country`
+lines (found by hand on Google, directories or trade fairs). They go to `data/inbox/discovery_seeds.csv` and the next run
+reads their public pages and builds evidence. (On a host without a persistent disk, the list is lost on restart.)
+
 ### Putting the web app online
 
 The app has a login for online use. To accept outside connections you must set `AVYUKT_PASSWORD`

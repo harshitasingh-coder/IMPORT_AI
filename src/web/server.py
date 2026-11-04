@@ -69,6 +69,61 @@ def validate_run_request(body):
     return opts, ({stage} if stage else None)
 
 
+SEED_FIELDS = ["raw_company_name", "source_url", "source_type", "country", "source_name"]
+MAX_SEED_LINES = 200
+_URL_RE = re.compile(r"(https?://[^\s|,;]+|www\.[^\s|,;]+)", re.I)
+
+
+def parse_seed_text(text, paths):
+    """Parse pasted lines like 'Company name | https://site.com | Indonesia' (country optional).
+    Returns (rows to add, rejected [(line, reason)], duplicates skipped)."""
+    from src.pipeline import countries
+    from src.pipeline.common import read_csv
+    from src.pipeline.discovery import classify_domain, domain_of, normalize_url
+    existing = {normalize_url(r["source_url"]).rstrip("/").lower() for r in read_csv(paths.discovery_seeds)}
+    rows, rejected, dups = [], [], 0
+    lines = [l.strip() for l in str(text or "").splitlines() if l.strip()]
+    if len(lines) > MAX_SEED_LINES:
+        raise ValueError(f"Add at most {MAX_SEED_LINES} lines at a time.")
+    for line in lines:
+        m = _URL_RE.search(line)
+        if not m:
+            rejected.append((line[:80], "no website address (start it with https:// or www.)"))
+            continue
+        url = normalize_url(m.group(1).rstrip(".,)"))
+        name = re.sub(r"[|,;\t\-:]+$", "", line[:m.start()].strip()).strip()
+        country = re.sub(r"^[|,;\t\-:\s]+", "", line[m.end():]).strip(" |,;\t")
+        if not url:
+            rejected.append((line[:80], "invalid website address"))
+        elif not name:
+            rejected.append((line[:80], "missing company name before the address"))
+        elif country and not countries.to_iso3(country):
+            rejected.append((line[:80], f"unknown country '{country[:30]}' (leave blank or use a standard name)"))
+        elif url.rstrip("/").lower() in existing:
+            dups += 1
+        else:
+            existing.add(url.rstrip("/").lower())
+            rows.append({"raw_company_name": name[:120], "source_url": url,
+                         "source_type": classify_domain(domain_of(url))[0], "country": country,
+                         "source_name": "pasted in web app"})
+    return rows, rejected, dups
+
+
+def add_seeds(paths, text):
+    import csv
+    rows, rejected, dups = parse_seed_text(text, paths)
+    if rows:
+        paths.inbox.mkdir(parents=True, exist_ok=True)
+        new_file = not paths.discovery_seeds.exists() or paths.discovery_seeds.stat().st_size == 0
+        with paths.discovery_seeds.open("a", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=SEED_FIELDS)
+            if new_file:
+                w.writeheader()
+            w.writerows(rows)
+    return {"added": len(rows), "duplicates_skipped": dups,
+            "rejected": [{"line": l, "reason": r} for l, r in rejected]}
+
+
 def start_run(state: AppState, opts, selected):
     """Start a background run. Returns (ok, message)."""
     with state.lock:
@@ -184,6 +239,9 @@ def make_handler(state: AppState):
                 return self._json(200, self._payload())
             if path == "/api/status":
                 return self._json(200, state.snapshot())
+            if path == "/api/seeds":
+                from src.pipeline.common import read_csv
+                return self._json(200, {"count": len(read_csv(state.paths.discovery_seeds))})
             if path == "/api/profile":
                 return self._json(200, read_json(state.paths.input_profile) or {})
             self._json(404, {"error": "not found"})
@@ -195,13 +253,21 @@ def make_handler(state: AppState):
                 return self._deny_auth()
             if not self._same_origin():
                 return self._json(403, {"error": "cross-origin request refused"})
-            if self.path != "/api/run":
+            if self.path not in ("/api/run", "/api/seeds"):
                 return self._json(404, {"error": "not found"})
             if "application/json" not in (self.headers.get("Content-Type") or ""):
                 return self._json(415, {"error": "send application/json"})
             n = int(self.headers.get("Content-Length") or 0)
             if n > MAX_BODY:
                 return self._json(413, {"error": "body too large"})
+            if self.path == "/api/seeds":
+                try:
+                    body = json.loads(self.rfile.read(n) or b"{}")
+                    if not isinstance(body, dict):
+                        raise ValueError("Request body must be a JSON object.")
+                    return self._json(200, add_seeds(state.paths, body.get("text", "")))
+                except (ValueError, json.JSONDecodeError) as exc:
+                    return self._json(400, {"error": str(exc)})
             try:
                 opts, selected = validate_run_request(json.loads(self.rfile.read(n) or b"{}"))
             except (ValueError, json.JSONDecodeError) as exc:

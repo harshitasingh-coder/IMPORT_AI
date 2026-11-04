@@ -9,7 +9,7 @@ from src.web import server
 from tests.helpers import PipelineTestCase
 
 
-class WebApp(PipelineTestCase):
+class WebBase(PipelineTestCase):
     def setUp(self):
         super().setUp()
         self.srv = server.make_server(self.paths, 0)
@@ -36,6 +36,8 @@ class WebApp(PipelineTestCase):
             time.sleep(0.1)
         self.fail("run did not finish")
 
+
+class WebApp(WebBase):
     def test_serves_page_and_empty_data(self):
         code, html = self.call("/")
         self.assertEqual(code, 200)
@@ -90,6 +92,49 @@ class WebApp(PipelineTestCase):
 
     def test_unknown_path_404(self):
         self.assertEqual(self.call("/nope")[0], 404)
+
+
+class WebSeeds(WebBase):
+    def test_paste_companies_validates_dedupes_and_feeds_discovery(self):
+        text = "\n".join([
+            "PT Fiktif Kacang | https://fiktif-kacang.test | Indonesia",
+            "Fiktif Trading BV, www.fiktif-trading.test, Netherlands",
+            "No Address Co | Indonesia",
+            "Bad Country Co | https://bad-country.test | Narnia",
+            "https://only-address.test",
+            "PT Fiktif Kacang | https://fiktif-kacang.test/ | Indonesia",
+        ])
+        code, j = self.call("/api/seeds", {"text": text})
+        self.assertEqual(code, 200, j)
+        self.assertEqual((j["added"], j["duplicates_skipped"], len(j["rejected"])), (2, 1, 3))
+        reasons = " ".join(r["reason"] for r in j["rejected"])
+        self.assertIn("no website address", reasons)
+        self.assertIn("unknown country", reasons)
+        self.assertIn("missing company name", reasons)
+        self.assertEqual(self.call("/api/seeds")[1]["count"], 2)
+        # a second paste of the same companies adds nothing
+        self.assertEqual(self.call("/api/seeds", {"text": text})[1]["added"], 0)
+        # and the pipeline discovery stage picks them up as candidates (no network needed)
+        self.call("/api/run", {"stage": "profile", "offline": True}); self.wait_done()
+        self.call("/api/run", {"stage": "discovery", "offline": True}); self.wait_done()
+        from src.pipeline.common import read_csv
+        names = {c["raw_company_name"] for c in read_csv(self.paths.candidates)}
+        self.assertEqual(names, {"PT Fiktif Kacang", "Fiktif Trading BV"})
+
+    def test_seed_input_limits_and_bad_body(self):
+        self.assertEqual(self.call("/api/seeds", {"text": "\n".join(f"A{i} | https://a{i}.test" for i in range(201))})[0], 400)
+        self.assertEqual(self.call("/api/seeds", [])[0], 400)
+        self.assertEqual(self.call("/api/seeds", {"text": ""})[1]["added"], 0)
+
+    def test_seeds_need_login_when_password_set(self):
+        srv = server.make_server(self.paths, 0, "127.0.0.1", "pw-123456789")
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close); self.addCleanup(srv.shutdown)
+        req = urllib.request.Request(f"http://127.0.0.1:{srv.server_port}/api/seeds", data=b'{"text":"x"}',
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req)
+        self.assertEqual(cm.exception.code, 401)
 
 
 class WebAuth(PipelineTestCase):
