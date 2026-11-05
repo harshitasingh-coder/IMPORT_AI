@@ -31,9 +31,10 @@ LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
 
 class AppState:
-    def __init__(self, paths: Paths, password: str = ""):
+    def __init__(self, paths: Paths, password: str = "", locked: bool = False):
         self.paths = paths
         self.password = password
+        self.locked = locked  # public address without a password: show a setup message only
         self.lock = threading.Lock()
         self.status = {"state": "idle", "run_id": "", "message": "", "stages": [], "summary": None}
 
@@ -224,10 +225,17 @@ def make_handler(state: AppState):
             p["last_run"] = {k: summary.get(k) for k in ("run_id", "started_at", "completed_at", "stages_failed")}
             return p
 
+        def _locked_reply(self):
+            msg = ("AVYUKT is running but locked: the AVYUKT_PASSWORD environment variable is missing or empty. "
+                   "Set it to a long random value in your hosting dashboard (Environment tab) and redeploy.")
+            self._send(503, msg, "text/plain")
+
         def do_GET(self):
             path = self.path.split("?")[0]
             if path == "/healthz":  # for hosting platforms; reveals nothing
                 return self._json(200, {"ok": True})
+            if state.locked:
+                return self._locked_reply()
             if not self._host_ok():
                 return self._json(403, {"error": "forbidden host"})
             if not self._authorized():
@@ -247,6 +255,8 @@ def make_handler(state: AppState):
             self._json(404, {"error": "not found"})
 
         def do_POST(self):
+            if state.locked:
+                return self._locked_reply()
             if not self._host_ok():
                 return self._json(403, {"error": "forbidden host"})
             if not self._authorized():
@@ -279,11 +289,11 @@ def make_handler(state: AppState):
 
 
 def make_server(paths: Paths, port=8000, host="127.0.0.1", password=""):
-    if host not in LOCAL_HOSTS and not password:
-        raise SystemExit("Refusing to listen on a public address without a password. "
-                         "Set AVYUKT_PASSWORD (a long random value) first.")
+    """Public address without a password => the server still starts but only shows a setup message.
+    (Exiting instead made hosting platforms report a silent 'port timeout'.)"""
+    locked = host not in LOCAL_HOSTS and not password
     paths.ensure()
-    return ThreadingHTTPServer((host, port), make_handler(AppState(paths, password)))
+    return ThreadingHTTPServer((host, port), make_handler(AppState(paths, password, locked)))
 
 
 def main(argv=None):
@@ -294,9 +304,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     host = args.host or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
     password = os.environ.get("AVYUKT_PASSWORD", "")
+    print(f"AVYUKT starting: host={host} port={args.port} password_set={bool(password)} "
+          f"data_dir={args.data_dir or 'default'}", flush=True)
     srv = make_server(Paths(args.data_dir), args.port, host, password)
-    mode = "password-protected (user: avyukt)" if password else "local, no login"
-    print(f"AVYUKT running on {host}:{srv.server_port} - {mode}  (Ctrl+C to stop)")
+    mode = ("password-protected (user: avyukt)" if password else
+            "LOCKED - set AVYUKT_PASSWORD" if host not in LOCAL_HOSTS else "local, no login")
+    print(f"AVYUKT running on {host}:{srv.server_port} - {mode}  (Ctrl+C to stop)", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
