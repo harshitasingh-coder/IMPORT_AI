@@ -125,7 +125,8 @@ def normalize_profile(raw: dict, now) -> dict:
         "target_markets": markets,
         "specifications": raw.get("specifications") or {},
         "trade_flow_of_interest": raw.get("trade_flow_of_interest") or "imports",
-        "years_to_collect": raw.get("years_to_collect") or [],
+        # default: the last five complete calendar years (latest year is usually incomplete at the UN)
+        "years_to_collect": raw.get("years_to_collect") or list(range(now.year - 5, now.year)),
         "notes": raw.get("notes") or "",
         "warnings": warnings,
     }

@@ -174,9 +174,20 @@ class WebAuth(PipelineTestCase):
         self.assertEqual(self.get(base + "/api/run", auth="avyukt:pw-123456789",
                                   headers={**j, "Origin": "https://evil.example"}, data=body), 403)
 
-    def test_public_bind_without_password_is_refused(self):
-        with self.assertRaises(SystemExit):
-            server.make_server(self.paths, 0, "0.0.0.0", "")
+    def test_public_bind_without_password_starts_locked_and_exposes_nothing(self):
+        srv = server.make_server(self.paths, 0, "127.0.0.1", "")
+        srv.RequestHandlerClass  # local mode is open
+        srv.server_close()
+        srv = server.make_server(self.paths, 0, "0.0.0.0", "")   # public + no password => locked
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        base = f"http://127.0.0.1:{srv.server_port}"
+        self.assertEqual(self.get(base + "/healthz"), 200)       # port is open, platform health check passes
+        for path in ("/", "/api/data", "/api/status"):
+            self.assertEqual(self.get(base + path), 503, path)   # but nothing is served
+        self.assertEqual(self.get(base + "/api/run", headers={"Content-Type": "application/json"}, data=b"{}"), 503)
+        self.assertEqual(self.get(base + "/api/data", auth="avyukt:anything"), 503)
 
     def test_no_password_means_local_mode_still_open(self):
         base = self.start("")
