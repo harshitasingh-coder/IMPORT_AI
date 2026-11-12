@@ -87,7 +87,10 @@ function render(){
   h('div',{class:'mute'},'Excluded: '+((P.excluded_forms||[]).map(f=>`${f.form} (HS ${f.hs_code})`).join(', ')||'none'))));
  left.append(card('Target markets',D.market_available?h('table',{},h('tr',{},['Market','Latest import (USD)','Trend','India share','Data retrieved'].map(x=>h('th',{},x))),
   D.markets.map(m=>h('tr',{},h('td',{},m.country),h('td',{},Number(m.latest_import_value_usd).toLocaleString()+' ('+m.latest_year+')'),h('td',{},m.trend),h('td',{},m.india_share_latest_pct?m.india_share_latest_pct+'%':'unknown'),h('td',{},(m.retrieved_at||'').slice(0,10)+' ('+m.freshness_status+')')))):
-  h('div',{class:'warn'},'Trade data unavailable — '+(P.target_markets||[]).map(m=>m.country).join(', ')+' are the profile\'s target markets; no statistics shown.'),
+  h('div',{},h('div',{class:'warn'},'Trade data unavailable — '+(P.target_markets||[]).map(m=>m.country).join(', ')+' are the profile\'s target markets; no statistics shown.'),
+    h('div',{class:'mute',style:'margin:6px 0 2px'},'Why (from the last run):'),
+    ...(((D.run||{}).warnings||[]).filter(w=>w.startsWith('[market]')||w.startsWith('[profile] No HS')).map(w=>h('div',{class:'err'},w))),
+    ((D.run||{}).warnings||[]).some(w=>w.startsWith('[market]'))?null:h('div',{class:'mute'},'No reason recorded yet — click Run first.')),
   !D.market_available?'':h('div',{class:'mute'},'Country-level statistics only; they do not identify individual importers.')));
  const C=D.counts;left.append(card('Pipeline results',h('div',{class:'kpis'},[['Discovered',C.discovered],['Potential buyers',C.potential_buyer],['Relevant businesses',C.relevant_business],['Weak leads',C.weak_lead],['Undetermined',C.undetermined],['Excluded',C.excluded]].map(([a,b])=>h('div',{class:'kpi'},h('b',{},b),a)))));
  const fs=h('select',{},['all','potential_buyer','relevant_business','weak_lead','undetermined','excluded'].map(x=>h('option',{value:x},x)));fs.value=filterVal;
