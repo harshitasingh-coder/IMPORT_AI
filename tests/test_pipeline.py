@@ -48,6 +48,13 @@ class Stage1Profile(PipelineTestCase):
         with self.assertRaises(profile.ProfileError):
             profile.normalize_profile({"product_name": "", "origin": "India", "target_countries": ["Indonesia"]}, NOW)
 
+    def test_form_profile_gets_default_years_so_trade_data_can_be_requested(self):
+        p = profile.normalize_profile({"product_name": "Groundnuts", "product_form": "Shelled", "origin": "India",
+                                       "hs_code": "120242", "target_countries": ["Indonesia"]}, NOW)
+        self.assertEqual(p["years_to_collect"], [2021, 2022, 2023, 2024, 2025])  # NOW is Nov 2026
+        raw = {"product_name": "G", "origin": "India", "target_countries": ["Indonesia"], "years_to_collect": [2023]}
+        self.assertEqual(profile.normalize_profile(raw, NOW)["years_to_collect"], [2023])  # explicit years win
+
     def test_profile_id_is_stable(self):
         raw = json.loads((self.data / "product_profile.json").read_text())
         self.assertEqual(profile.normalize_profile(raw, NOW)["profile_id"], profile.normalize_profile(raw, NOW)["profile_id"])
@@ -110,6 +117,23 @@ class Stage2Market(PipelineTestCase):
         self.assertEqual(analysis[0]["retrieved_at"], "2026-10-18T10:00:00+00:00")  # original date kept
         self.assertTrue(r.counts["data_available"])
         self.assertFalse(r.counts["refreshed_this_run"])
+
+    def test_form_profile_reaches_the_trade_api_with_hs_codes_and_years(self):
+        import src.pipeline.market as m
+        calls = []
+        orig_key, orig_collect = m.config.has_comtrade_key, comtrade_client.collect_year
+        m.config.has_comtrade_key = lambda: True
+        comtrade_client.collect_year = lambda year, codes, name: calls.append((year, codes)) or []
+        try:
+            r = self.ctx(profile_input={"product_name": "Groundnuts", "origin": "India", "hs_code": "120242",
+                                        "target_countries": ["Indonesia"]})
+            profile.run(r)
+            res = market.run(r)
+        finally:
+            m.config.has_comtrade_key, comtrade_client.collect_year = orig_key, orig_collect
+        self.assertEqual([c[0] for c in calls], [2021, 2022, 2023, 2024, 2025])
+        self.assertEqual(calls[0][1], ["120242"])
+        self.assertFalse(any("No HS codes or years" in w for w in res.warnings))
 
     def test_api_failure_is_recorded_and_data_not_fabricated(self):
         profile.run(self.ctx())
