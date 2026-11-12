@@ -111,20 +111,72 @@ def classify_domain(domain: str):
 
 # ---------------------------------------------------------------- search
 
-class BraveSearch:
-    URL = "https://api.search.brave.com/res/v1/web/search"
+class SearchAuthError(RuntimeError):
+    """The search service rejected our key: every further query would fail the same way."""
 
-    def __init__(self, api_key, timeout=30):
-        self.api_key, self.timeout = api_key, timeout
+
+def _post_or_get(method, url, **kw):
+    r = getattr(requests, method)(url, timeout=30, **kw)
+    if r.status_code in (401, 403, 422):
+        raise SearchAuthError(f"HTTP {r.status_code}: the search key was rejected ({r.text[:120]})")
+    if r.status_code == 429:
+        raise SearchAuthError("HTTP 429: search quota or rate limit reached")
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+    return r.json()
+
+
+class TavilySearch:
+    name = "tavily"
+    URL = "https://api.tavily.com/search"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
 
     def search(self, query, count=RESULTS_PER_QUERY):
-        r = requests.get(self.URL, params={"q": query, "count": count},
-                         headers={"X-Subscription-Token": self.api_key, "Accept": "application/json"},
-                         timeout=self.timeout)
-        if r.status_code != 200:
-            raise RuntimeError(f"Brave Search HTTP {r.status_code}: {r.text[:200]}")
+        body = _post_or_get("post", self.URL, json={"query": query, "max_results": count, "search_depth": "basic"},
+                            headers={"Authorization": f"Bearer {self.api_key}"})
+        return [{"title": x.get("title", ""), "url": x.get("url", ""), "snippet": x.get("content", "")}
+                for x in (body.get("results") or [])]
+
+
+class SerperSearch:
+    name = "serper"
+    URL = "https://google.serper.dev/search"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def search(self, query, count=RESULTS_PER_QUERY):
+        body = _post_or_get("post", self.URL, json={"q": query, "num": count},
+                            headers={"X-API-KEY": self.api_key, "Content-Type": "application/json"})
+        return [{"title": x.get("title", ""), "url": x.get("link", ""), "snippet": x.get("snippet", "")}
+                for x in (body.get("organic") or [])]
+
+
+class BraveSearch:
+    name = "brave"
+    URL = "https://api.search.brave.com/res/v1/web/search"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def search(self, query, count=RESULTS_PER_QUERY):
+        body = _post_or_get("get", self.URL, params={"q": query, "count": count},
+                            headers={"X-Subscription-Token": self.api_key, "Accept": "application/json"})
         return [{"title": x.get("title", ""), "url": x.get("url", ""), "snippet": x.get("description", "")}
-                for x in (r.json().get("web", {}).get("results") or [])]
+                for x in (body.get("web", {}).get("results") or [])]
+
+
+def configured_provider():
+    """First search service with a real key: Tavily (free, no card), Serper, then Brave. None if no key."""
+    if config.TAVILY_API_KEY:
+        return TavilySearch(config.TAVILY_API_KEY)
+    if config.SERPER_API_KEY:
+        return SerperSearch(config.SERPER_API_KEY)
+    if config.BRAVE_SEARCH_API_KEY:
+        return BraveSearch(config.BRAVE_SEARCH_API_KEY)
+    return None
 
 
 def build_queries(profile, max_queries=MAX_QUERIES_DEFAULT):
@@ -244,19 +296,24 @@ def from_seeds(ctx, profile):
 def from_search(ctx, profile, res):
     """Route 3: search API. Returns candidates; records errors without stopping."""
     provider = ctx.search_provider
-    if provider is None and config.BRAVE_SEARCH_API_KEY and not ctx.offline:
-        provider = BraveSearch(config.BRAVE_SEARCH_API_KEY)
+    if provider is None and not ctx.offline:
+        provider = configured_provider()
     queries = build_queries(profile, ctx.options.get("max_queries", MAX_QUERIES_DEFAULT))
     out, ran, cached_n, failed = [], 0, 0, 0
     if provider is None and not any(
             read_json(ctx.paths.discovery_cache / f"search_{hashlib.sha1(fold(q).encode()).hexdigest()[:12]}.json")
             for q, _ in queries):
-        res.warn("Search discovery skipped: no search provider (set BRAVE_SEARCH_API_KEY) and no cached results. "
-                 "Only manual leads and seed pages were used.")
+        res.warn("Automatic company search is OFF: no search key is set (add a free TAVILY_API_KEY, no card needed) "
+                 "and no cached results exist. Only manual leads and pasted companies were used.")
         return out
     for query, iso3 in queries:
         try:
             results, retrieved_at, was_cached = _cached_search(ctx, provider, query)
+        except SearchAuthError as exc:   # same failure for every query: report once and stop
+            failed += 1
+            res.warn(f"Search stopped: {exc}. Check the search key in your settings.")
+            ctx.log("discovery", "search_auth_error", error=str(exc))
+            break
         except Exception as exc:
             failed += 1
             res.warn(f"Search failed for '{query}': {exc}")
@@ -274,7 +331,7 @@ def from_search(ctx, profile, res):
             out.append(make_candidate(
                 ctx, name=_title_to_name(title) or dom, url=item.get("url", ""),
                 source_type=stype if stype != "company_website" else "company_website",
-                method="search_api", query=query, country_hint=iso3, country_basis="query_context",
+                method=f"search_api:{getattr(provider, 'name', 'search')}", query=query, country_hint=iso3, country_basis="query_context",
                 title=title, snippet=item.get("snippet", ""),
                 reason=("snippet/title mentions the product; " if has_prod else "no product term in snippet; ")
                        + f"lead from query '{query}' ({note}); not proof of importing",
@@ -325,7 +382,7 @@ def run(ctx: Context) -> StageResult:
         res.warn(f"{len(rejects)} discovery rows rejected (see discovery_rejects.csv).")
     res.counts.update({"candidates_total": len(rows), "candidates_new": new, "rejected": len(rejects)})
     if not rows:
-        res.warn("No company candidates available. Ingest leads (src.buyer_discovery), add "
-                 "data/inbox/discovery_seeds.csv, or configure BRAVE_SEARCH_API_KEY.")
+        res.warn("No company candidates available. Set a free TAVILY_API_KEY for automatic search, paste companies "
+                 "in the web app, or ingest leads (src.buyer_discovery).")
     res.status = STATUS_WARNINGS if res.warnings else STATUS_COMPLETED
     return res

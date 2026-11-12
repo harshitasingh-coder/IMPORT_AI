@@ -25,7 +25,9 @@ def _key(name):
 
 UN_COMTRADE_API_KEY = _key("UN_COMTRADE_API_KEY")
 # Optional: official Brave Search API key for automated buyer discovery.
-BRAVE_SEARCH_API_KEY = _key("BRAVE_SEARCH_API_KEY")
+BRAVE_SEARCH_API_KEY = _key("BRAVE_SEARCH_API_KEY")  # needs a card even on its free tier
+TAVILY_API_KEY = _key("TAVILY_API_KEY")              # free: 1,000 searches/month, no card (tavily.com)
+SERPER_API_KEY = _key("SERPER_API_KEY")              # free: 2,500 searches once, no card (serper.dev)
 
 
 def ensure_data_dirs():

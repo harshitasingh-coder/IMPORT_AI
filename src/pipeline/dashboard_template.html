@@ -45,7 +45,11 @@ function buildRunPanel(){
     catch(e){seedmsg.className='err';seedmsg.textContent='Could not reach the server: '+e}addb.disabled=false};
   const have=h('div',{class:'mute',style:'margin-top:6px',id:'seedcount'});
   async function counts(){try{const j=await (await fetch('/api/seeds')).json();have.textContent=`${j.count} compan${j.count===1?'y':'ies'} saved so far.`}catch(e){}}
-  const s2=step(2,'Add companies to check',h('div',{class:'mute',style:'margin-bottom:6px'},'The app cannot invent companies. Find importers yourself (Google, directories, trade fairs) and paste their name and website here. It then reads their public pages and builds the evidence. No search key needed.'),ta,h('div',{style:'margin-top:8px'},addb),seedmsg,have);
+  const auto=h('div',{id:'autosearch',class:'mute',style:'margin-bottom:8px'},'Checking automatic search…');
+  fetch('/api/config').then(r=>r.json()).then(c=>{
+    if(c.search_provider){auto.className='';auto.textContent='Automatic company search is ON ('+c.search_provider+'). The app finds companies by itself when you click Find buyers. You can still add your own below.'}
+    else{auto.className='warn';auto.textContent='Automatic company search is OFF. To turn it on, add a free TAVILY_API_KEY (tavily.com, no card needed) in your hosting settings. Until then, paste companies below.'}}).catch(()=>{auto.textContent=''});
+  const s2=step(2,'Companies to check',auto,h('div',{class:'mute',style:'margin-bottom:6px'},'Optional: add importers you already know (name and website). The app reads only their public pages and builds the evidence.'),ta,h('div',{style:'margin-top:8px'},addb),seedmsg,have);
   const off=h('input',{type:'checkbox',id:'f_off'});
   const go=h('button',{id:'btn_run',style:'font-size:16px;padding:10px 20px'},'Find buyers');
   const s3=step(3,'Run',h('div',{style:'display:flex;gap:12px;align-items:center;flex-wrap:wrap'},go,h('label',{style:'display:inline'},off,' Offline (do not visit websites)')),
@@ -97,7 +101,7 @@ function render(){
  const q=h('input',{placeholder:'search name/country',value:queryVal});const tb=h('table',{});
  function draw(){filterVal=fs.value;queryVal=q.value;tb.replaceChildren(h('tr',{},['#','Company','Country','Type','Class','Score','Band'].map(x=>h('th',{},x))));
   const rows=D.companies.filter(c=>(fs.value==='all'||c.ranking.final_classification===fs.value)&&(c.ranking.company_name+c.ranking.country_iso3).toLowerCase().includes(q.value.toLowerCase()));
-  if(!rows.length)tb.append(h('tr',{},h('td',{colspan:7,class:'mute'},D.companies.length?'No companies match this filter.':'No companies yet. Add companies in Step 2, then click Find buyers.')));
+  if(!rows.length)tb.append(h('tr',{},h('td',{colspan:7,class:'mute'},D.companies.length?'No companies match this filter.':'No companies yet. Turn on automatic search (Step 2) or paste companies, then click Find buyers.')));
   rows.forEach(c=>{const r=c.ranking;const tr=h('tr',{class:'row'+(r.company_id===selectedId?' sel':'')},h('td',{},r.rank||'—'),h('td',{},r.company_name),h('td',{},r.country_iso3||'?'),h('td',{},r.business_type||'?'),h('td',{},h('span',{class:'pill'},r.final_classification)),h('td',{},r.total_score),h('td',{},r.priority_band));
    tr.onclick=()=>{selectedId=r.company_id;document.querySelectorAll('tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel');detail(c)};tb.append(tr);if(r.company_id===selectedId)detail(c)})}
  fs.onchange=q.oninput=draw;left.append(card('Ranked companies',h('div',{},fs,' ',q),tb));draw();

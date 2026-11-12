@@ -247,6 +247,12 @@ def make_handler(state: AppState):
                 return self._json(200, self._payload())
             if path == "/api/status":
                 return self._json(200, state.snapshot())
+            if path == "/api/config":  # which services are connected (never the key values)
+                from src import config
+                from src.pipeline import discovery
+                prov = discovery.configured_provider()
+                return self._json(200, {"search_provider": getattr(prov, "name", None),
+                                        "trade_data_key": config.has_comtrade_key()})
             if path == "/api/seeds":
                 from src.pipeline.common import read_csv
                 return self._json(200, {"count": len(read_csv(state.paths.discovery_seeds))})

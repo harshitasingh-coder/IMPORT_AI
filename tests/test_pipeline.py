@@ -247,6 +247,73 @@ def seed_company_site_candidates(test, urls_names):
     write_csv_rows(test.paths.discovery_seeds, ["raw_company_name", "source_url", "source_type", "country", "source_name"], rows)
 
 
+class SearchProviders(PipelineTestCase):
+    """Search adapters with the HTTP layer faked: parsing, provider choice, and one-warning-on-bad-key."""
+
+    class Resp:
+        def __init__(self, code, body):
+            self.status_code, self._b, self.text = code, body, json.dumps(body)
+
+        def json(self):
+            return self._b
+
+    def patch_post(self, handler):
+        orig = discovery.requests.post
+        discovery.requests.post = handler
+        self.addCleanup(setattr, discovery.requests, "post", orig)
+
+    def test_tavily_and_serper_parse_results(self):
+        seen = {}
+
+        def fake(url, **kw):
+            seen[url] = kw
+            if "tavily" in url:
+                return self.Resp(200, {"results": [{"title": "A", "url": "https://a.test", "content": "peanut importer"}]})
+            return self.Resp(200, {"organic": [{"title": "B", "link": "https://b.test", "snippet": "groundnut buyer"}]})
+        self.patch_post(fake)
+        t = discovery.TavilySearch("k1").search("q")
+        s = discovery.SerperSearch("k2").search("q")
+        self.assertEqual(t, [{"title": "A", "url": "https://a.test", "snippet": "peanut importer"}])
+        self.assertEqual(s, [{"title": "B", "url": "https://b.test", "snippet": "groundnut buyer"}])
+        self.assertEqual(seen["https://api.tavily.com/search"]["headers"]["Authorization"], "Bearer k1")
+        self.assertEqual(seen["https://google.serper.dev/search"]["headers"]["X-API-KEY"], "k2")
+
+    def test_provider_choice_prefers_free_no_card_services(self):
+        from src import config
+        old = (config.TAVILY_API_KEY, config.SERPER_API_KEY, config.BRAVE_SEARCH_API_KEY)
+        try:
+            config.TAVILY_API_KEY = config.SERPER_API_KEY = config.BRAVE_SEARCH_API_KEY = ""
+            self.assertIsNone(discovery.configured_provider())
+            config.BRAVE_SEARCH_API_KEY = "b"
+            self.assertEqual(discovery.configured_provider().name, "brave")
+            config.SERPER_API_KEY = "s"
+            self.assertEqual(discovery.configured_provider().name, "serper")
+            config.TAVILY_API_KEY = "t"
+            self.assertEqual(discovery.configured_provider().name, "tavily")
+        finally:
+            config.TAVILY_API_KEY, config.SERPER_API_KEY, config.BRAVE_SEARCH_API_KEY = old
+
+    def test_rejected_key_stops_after_first_query_with_one_warning(self):
+        profile.run(self.ctx())
+        calls = []
+        self.patch_post(lambda url, **kw: calls.append(url) or self.Resp(401, {"error": "bad key"}))
+        r = discovery.run(self.ctx(search=discovery.TavilySearch("bad"), max_queries=10))
+        self.assertEqual(len(calls), 1)
+        stops = [w for w in r.warnings if "Search stopped" in w]
+        self.assertEqual(len(stops), 1)
+        self.assertIn("rejected", stops[0])
+
+    def test_automatic_search_end_to_end_marks_provider_and_keeps_snippets_as_leads(self):
+        profile.run(self.ctx())
+        self.patch_post(lambda url, **kw: self.Resp(200, {"results": [
+            {"title": "PT Fiktif Kacang - Home", "url": "https://fiktif-kacang.test/", "content": "Importer of peanuts in Jakarta"}]}))
+        discovery.run(self.ctx(search=discovery.TavilySearch("k"), max_queries=2))
+        rows = read_csv(self.paths.candidates)
+        self.assertEqual(len(rows), 1)  # same URL from both queries is one candidate
+        self.assertEqual(rows[0]["discovery_method"], "search_api:tavily")
+        self.assertEqual(rows[0]["evidence_level"], "lead_only_snippet")
+
+
 class Stage4Extraction(PipelineTestCase):
     def setUp(self):
         super().setUp()

@@ -90,6 +90,18 @@ class WebApp(WebBase):
         ok, msg = server.start_run(st, {"offline": True}, None)
         self.assertFalse(ok)
 
+    def test_config_endpoint_reports_services_without_leaking_keys(self):
+        from src import config
+        old = config.TAVILY_API_KEY
+        config.TAVILY_API_KEY = "secret-tavily-key-value"
+        try:
+            code, j = self.call("/api/config")
+        finally:
+            config.TAVILY_API_KEY = old
+        self.assertEqual(code, 200)
+        self.assertEqual(j["search_provider"], "tavily")
+        self.assertNotIn("secret-tavily-key-value", json.dumps(j))
+
     def test_unknown_path_404(self):
         self.assertEqual(self.call("/nope")[0], 404)
 
